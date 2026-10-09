@@ -1,0 +1,81 @@
+#!/bin/bash
+set -euo pipefail
+
+# 色付き出力
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${BLUE}=== Fuji OS: Google Play 端末登録支援 (GSF ID) ===${NC}"
+
+# Waydroidコンテナサービスの確認
+if ! systemctl is-active --quiet waydroid-container.service; then
+    echo -e "${YELLOW}waydroid-container サービスが停止しています。起動を試みます...${NC}"
+    sudo systemctl start waydroid-container.service || {
+        echo -e "${RED}エラー: waydroid-container サービスを起動できませんでした。${NC}"
+        exit 1
+    }
+fi
+
+# セッション状態の確認
+WAYDROID_STATUS=$(waydroid status 2>/dev/null || true)
+if echo "${WAYDROID_STATUS}" | grep -q "STOPPED"; then
+    echo -e "${YELLOW}Waydroidセッションが起動していません。バックグラウンドで開始します...${NC}"
+    waydroid session start &
+    sleep 3
+fi
+
+echo "Google Services Framework (GSF) IDを取得中..."
+
+ANDROID_ID=""
+
+# 方法1: Android内蔵の content query を利用
+CONTENT_OUT=$(waydroid shell content query --uri content://com.google.android.gsf.gservices --where "name=\'android_id\'" 2>/dev/null || true)
+if [[ -n "${CONTENT_OUT}" ]]; then
+    ANDROID_ID=$(echo "${CONTENT_OUT}" | grep -o 'value=[0-9]*' | cut -d= -f2 || true)
+fi
+
+# 方法2: sqlite3データベースを直接参照
+if [[ -z "${ANDROID_ID}" ]]; then
+    SQL_OUT=$(waydroid shell 'sqlite3 /data/data/com.google.android.gsf/databases/gservices.db "select * from main where name = \"android_id\";"' 2>/dev/null || true)
+    if [[ -n "${SQL_OUT}" ]]; then
+        ANDROID_ID=$(echo "${SQL_OUT}" | awk -F'|' '{print $2}' | tr -d '\r\n')
+    fi
+fi
+
+if [[ -z "${ANDROID_ID}" ]]; then
+    echo -e "${YELLOW}GSF IDの取得に失敗しました。${NC}"
+    echo "一度Waydroid上で Google Play ストア を開き、ログイン画面まで進めてから再度このコマンドを実行してください。"
+    echo "Waydroid起動コマンド: waydroid show-full-ui"
+    exit 1
+fi
+
+echo -e "${GREEN}取得成功！${NC}"
+echo -e "あなたの Android ID (GSF ID): ${GREEN}${ANDROID_ID}${NC}"
+
+# クリップボードへコピー
+if command -v wl-copy &>/dev/null; then
+    echo -n "${ANDROID_ID}" | wl-copy
+    echo -e "${BLUE}[情報] クリップボードにIDをコピーしました。${NC}"
+elif command -v xclip &>/dev/null; then
+    echo -n "${ANDROID_ID}" | xclip -selection clipboard
+    echo -e "${BLUE}[情報] クリップボードにIDをコピーしました。${NC}"
+fi
+
+echo ""
+echo -e "${YELLOW}【登録手順】${NC}"
+echo "1. ブラウザで Google 端末登録ページを開きます。"
+echo "2. 「Google サービス フレームワーク Android ID」の入力欄に上記IDを貼り付けます。"
+echo "3. 「登録」ボタンをクリックします。"
+echo "4. 数分待った後、WaydroidでGoogle Playストアを再起動してください。"
+echo ""
+
+REG_URL="https://www.google.com/android/uncertified/"
+if command -v xdg-open &>/dev/null; then
+    echo "ブラウザで登録ページを開いています: ${REG_URL}"
+    xdg-open "${REG_URL}" &>/dev/null &
+else
+    echo "ブラウザで以下のURLを開いてください: ${REG_URL}"
+fi

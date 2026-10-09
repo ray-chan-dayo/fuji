@@ -1,0 +1,178 @@
+#!/bin/bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+show_status() {
+    echo -e "${BLUE}=== Waydroid セットアップ状態 ===${NC}"
+    
+    # サービス確認
+    if systemctl is-active --quiet waydroid-container.service 2>/dev/null; then
+        echo -e "・コンテナサービス (waydroid-container): ${GREEN}実行中 (Active)${NC}"
+    else
+        echo -e "・コンテナサービス (waydroid-container): ${YELLOW}停止中 (Inactive)${NC}"
+    fi
+
+    # システムイメージ確認
+    if [[ -f "/var/lib/waydroid/images/system.img" ]]; then
+        echo -e "・Androidシステムイメージ: ${GREEN}インストール済み (/var/lib/waydroid/images/system.img)${NC}"
+    else
+        echo -e "・Androidシステムイメージ: ${RED}未検出${NC}"
+    fi
+
+    # マルチウィンドウ設定
+    MW_STATUS=$(waydroid prop get persist.waydroid.multi_windows 2>/dev/null || echo "unknown")
+    if [[ "${MW_STATUS}" == "true" ]]; then
+        echo -e "・ウィンドウモード: ${GREEN}マルチウィンドウ (KDE個別ウィンドウ)${NC}"
+    else
+        echo -e "・ウィンドウモード: ${YELLOW}フルUI (タブレットモード)${NC}"
+    fi
+
+    # ARMトランスレーション
+    if [[ -d "/var/lib/waydroid/overlay/system/lib64/arm64" ]] || [[ -f "/var/lib/waydroid/overlay_installed" ]]; then
+        echo -e "・ARMトランスレーション (libndk): ${GREEN}インストール済み${NC}"
+    else
+        echo -e "・ARMトランスレーション (libndk): ${YELLOW}未インストール (必要な場合オプションから導入可能)${NC}"
+    fi
+}
+
+toggle_multi_window() {
+    CURRENT=$(waydroid prop get persist.waydroid.multi_windows 2>/dev/null || echo "false")
+    if [[ "${CURRENT}" == "true" ]]; then
+        echo "フルUI（全画面タブレット）モードに切り替えます..."
+        waydroid prop set persist.waydroid.multi_windows false
+        echo -e "${GREEN}完了: フルUIモードに設定しました。次回起動時から反映されます。${NC}"
+    else
+        echo "マルチウィンドウモードに切り替えます..."
+        waydroid prop set persist.waydroid.multi_windows true
+        echo -e "${GREEN}完了: マルチウィンドウモードに設定しました。各アプリがKDEの個別ウィンドウとして開きます。${NC}"
+    fi
+}
+
+install_libndk() {
+    echo -e "${BLUE}=== ARMトランスレーション (libndk) のセットアップ ===${NC}"
+    echo "x86_64環境でARM向けAndroidアプリを動作させるためのライブラリを導入します。"
+    
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "${WORK_DIR}"' EXIT
+
+    echo "waydroid_script リポジトリを取得中..."
+    git clone --depth 1 https://github.com/casualsnek/waydroid_script.git "${WORK_DIR}/waydroid_script"
+
+    echo "libndk をインストール中 (管理者権限が必要です)..."
+    sudo python3 -m venv "${WORK_DIR}/venv"
+    "${WORK_DIR}/venv/bin/pip" install -r "${WORK_DIR}/waydroid_script/requirements.txt"
+    sudo "${WORK_DIR}/venv/bin/python3" "${WORK_DIR}/waydroid_script/main.py" install libndk
+
+    echo -e "${GREEN}ARMトランスレーションのインストールが完了しました！${NC}"
+    echo "Waydroidコンテナを再起動します..."
+    restart_waydroid
+}
+
+restart_waydroid() {
+    echo "Waydroidセッションを停止中..."
+    waydroid session stop 2>/dev/null || true
+    echo "waydroid-container サービスを再起動中..."
+    sudo systemctl restart waydroid-container.service
+    echo -e "${GREEN}再起動完了。${NC}"
+}
+
+init_gapps() {
+    echo -e "${BLUE}=== Waydroid GAPPS 初期化 ===${NC}"
+    echo "GAPPS (Google Play ストア) 付きの最新イメージをダウンロードしてセットアップします..."
+    sudo waydroid init -s GAPPS -f
+    echo "マルチウィンドウモードを有効化中..."
+    waydroid prop set persist.waydroid.multi_windows true
+    echo -e "${GREEN}初期化が完了しました！${NC}"
+}
+
+show_menu() {
+    while true; do
+        echo ""
+        echo -e "${BLUE}=========================================${NC}"
+        echo -e "${BLUE}       Fuji OS Waydroid 管理ツール       ${NC}"
+        echo -e "${BLUE}=========================================${NC}"
+        show_status
+        echo ""
+        echo "1) Waydroid 起動 (UI表示)"
+        echo "2) Google Play 端末登録 (GSF ID取得)"
+        echo "3) ウィンドウ表示切替 (マルチウィンドウ / フルUI)"
+        echo "4) ARMトランスレーション (libndk) のインストール"
+        echo "5) Waydroid コンテナ再起動"
+        echo "6) GAPPSイメージの再初期化 (init -s GAPPS)"
+        echo "q) 終了"
+        echo ""
+        read -rp "選択してください [1-6, q]: " CHOICE
+
+        case "${CHOICE}" in
+            1)
+                echo "Waydroidを起動します..."
+                waydroid show-full-ui &
+                break
+                ;;
+            2)
+                if command -v fuji-waydroid-cert &>/dev/null; then
+                    fuji-waydroid-cert
+                else
+                    /usr/bin/fuji-waydroid-cert
+                fi
+                ;;
+            3)
+                toggle_multi_window
+                ;;
+            4)
+                install_libndk
+                ;;
+            5)
+                restart_waydroid
+                ;;
+            6)
+                read -rp "本当に再初期化しますか？既存のAndroidデータはリセットされます (y/N): " CONFIRM
+                if [[ "${CONFIRM}" =~ ^[yY]$ ]]; then
+                    init_gapps
+                fi
+                ;;
+            q|Q)
+                echo "終了します。"
+                break
+                ;;
+            *)
+                echo -e "${RED}無効な選択です。${NC}"
+                ;;
+        esac
+    done
+}
+
+# 引数処理
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        --status)
+            show_status
+            ;;
+        --multi-window)
+            toggle_multi_window
+            ;;
+        --libndk)
+            install_libndk
+            ;;
+        --restart)
+            restart_waydroid
+            ;;
+        --init)
+            init_gapps
+            ;;
+        --cert)
+            fuji-waydroid-cert
+            ;;
+        *)
+            echo "使用方法: $0 [--status | --multi-window | --libndk | --restart | --init | --cert]"
+            exit 1
+            ;;
+    esac
+else
+    show_menu
+fi

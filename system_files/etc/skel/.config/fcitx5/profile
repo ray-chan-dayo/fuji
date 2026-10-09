@@ -1,0 +1,16 @@
+[Groups/0]
+# グループ名
+Name=Default
+# デフォルトで日本語レイアウトを適用
+Default Layout=jp
+# 入力メソッドの優先順位（Mozc を割り当て）
+DefaultIM=mozc
+
+[Groups/0/Items/0]
+Name=keyboard-jp
+
+[Groups/0/Items/1]
+Name=mozc
+
+[GroupOrder]
+0=Default

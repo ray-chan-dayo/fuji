@@ -4,7 +4,7 @@ COPY build_files /
 COPY system_files /system_files
 
 # Base Image
-FROM ghcr.io/ublue-os/bazzite:stable@sha256:9556db65991d57a03a7dc18e4ba28a686d8bcdcd6b61235aa69c8267bb22ff76
+FROM ghcr.io/ublue-os/kinoite-main:latest
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:testing
 # FROM ghcr.io/ublue-os/aurora:stable
@@ -25,6 +25,10 @@ FROM ghcr.io/ublue-os/bazzite:stable@sha256:9556db65991d57a03a7dc18e4ba28a686d8b
 ## by the package manager.
 
 # RUN rm /opt && mkdir /opt
+
+# variant name injection
+
+RUN echo VARIANT="Fuji" && echo VARIANT_ID=io.github.ray-chan-dayo.fuji >> /usr/lib/os-release
 
 ### MODIFICATIONS
 ## make modifications desired in your image and install packages by modifying the build.sh script

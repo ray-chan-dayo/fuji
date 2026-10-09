@@ -13,7 +13,32 @@ cp -avf "/ctx/system_files"/. /
 # https://mirrors.rpmfusion.org/mirrorlist?path=free/fedora/updates/43/x86_64/repoview/index.html&protocol=https&redirect=1
 
 # this installs a package from fedora repos
-dnf5 install -y tmux
+
+dnf5 install -y git \
+    htop \
+    nano \
+    podman \
+    fcitx5 \
+    fcitx5-mozc \
+    fcitx5-autostart \
+    libreoffice \
+    libreoffice-langpack-ja
+
+
+# Waydroid サービス有効化 & GAPPSシステムイメージの事前初期化 (完全オフライン型)
+dnf5 install -y \
+    android-tools \
+    lzip \
+    python3 \
+    python3-pip \
+    python3-tqdm \
+    waydroid
+systemctl enable waydroid-container.service && \
+    touch /dev/binder /dev/vndbinder /dev/hwbinder && \
+    waydroid init -c https://ota.waydro.id/system -v https://ota.waydro.id/vendor -s GAPPS && \
+    rm -f /dev/binder /dev/vndbinder /dev/hwbinder && \
+    rm -rf /var/lib/waydroid/cache_http && \
+    echo "persist.waydroid.multi_windows=true" >> /var/lib/waydroid/waydroid_base.prop
 
 # Use a COPR Example:
 #

@@ -1,0 +1,11 @@
+NAME="Fuji"
+VERSION="1.2"
+RELEASE_TYPE=stable
+ID=fuji
+ID_LIKE="fuji"
+VERSION_ID=2
+VERSION_CODENAME="Kinoite"
+PRETTY_NAME="Fuj1.2"
+LOGO=fuji-logo-2
+VARIANT="Kinoite"
+VARIANT_ID=fuji-12-kinoite
